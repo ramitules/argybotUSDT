@@ -1,38 +1,36 @@
 import requests
-import time
-import datetime
 from requests_oauthlib import OAuth1Session
 import json
 import pickle
+from datetime import datetime
+import time
 
 
-def mainloop():
-    range_hours = [hour for hour in range(9, 24)]  # Se ejecuta entre las 9 y las 23hs
-    range_hours.append(int(0))  # Se agrega las 00hs
-    h_now = datetime.datetime.now().hour  # Hora actual
-    m_now = datetime.datetime.now().minute  # Minutos actuales
+def main_func():
+    try:
+        with open('session.pkl', 'rb') as f:
+            session = pickle.load(f)
 
-    p_anteriores = dict()
-    with open('session.pkl', 'rb') as f:
-        session = pickle.load(f)
+    except FileNotFoundError:
+        session = connect()
 
     while True:
-        #  if h_now in range_hours and m_now == 0:  # Si la hora actual esta dentro del rango operacional y minutos = 0
+        print(datetime.now().minute)
+        time.sleep(60)
+
+        if datetime.now().minute != 0:
+            continue
+
         p_actuales = fetch_data()
-        data = twit_format(p_actuales, p_anteriores)
+        data = twit_format(p_actuales)
         post(session, data)
-        p_anteriores = p_actuales
-
-        h_now = datetime.datetime.now().hour
-        m_now = datetime.datetime.now().minute
-        print(f'{h_now}:{m_now}')
-
-        time.sleep(60)  # Intervalo de actualizacion: cada un minuto
-
 
 def connect():
-    consumer_key = ''
-    consumer_secret = ''
+    with open('keys.json', 'r', encoding='utf-8') as f:
+        keys = json.load(f)
+
+    consumer_key = keys['consumer_key']
+    consumer_secret = keys['consumer_secret']
 
     # Get request token
     request_token_url = "https://api.twitter.com/oauth/request_token?oauth_callback=oob&x_auth_access_type=write"
@@ -82,7 +80,7 @@ def connect():
     return oauth
 
 
-def calcular_varianza(dif: float):
+def varianza_str(dif: float):
     if dif > 0:
         varianza = 'subio {0:.2f}%'.format(dif)
 
@@ -90,7 +88,7 @@ def calcular_varianza(dif: float):
         varianza = 'bajo {0:.2f}%'.format(dif)
 
     else:
-        varianza = 'estable'
+        varianza = 'estable (0%)'
 
     return varianza
 
@@ -110,22 +108,28 @@ def fetch_data():
     return datos
 
 
-def twit_format(p_nuevos: dict[str, str],
-                p_viejos: dict[str, str] | None = None):
+def twit_format(p_nuevos: dict[str, str]):
+    try:
+        with open('info_precios.json', 'r', encoding='utf-8') as f:
+            p_viejos = json.load(f)
+
+    except FileNotFoundError:
+        p_viejos = dict()
+
     if p_viejos:
         # COMPRA
-        diferencia = float(p_viejos['compra']) / float(p_nuevos['compra']) - 1
-        diferencia = diferencia * 100  # Diferencia en porcentaje
+        diferencia = float(p_nuevos['compra']) / float(p_viejos['compra']) - 1
+        diferencia *= 100  # Diferencia en porcentaje
 
-        varianza = calcular_varianza(diferencia)
+        varianza = varianza_str(diferencia)
 
         compra = f"Para la compra: ${p_nuevos['compra']} - {varianza}"
 
         # VENTA
-        diferencia = float(p_viejos['venta']) / float(p_nuevos['venta']) - 1
-        diferencia = diferencia * 100
+        diferencia = float(p_nuevos['venta']) / float(p_viejos['venta']) - 1
+        diferencia *= 100
 
-        varianza = calcular_varianza(diferencia)
+        varianza = varianza_str(diferencia)
 
         venta = f"Para la venta: ${p_nuevos['venta']} - {varianza}"
 
@@ -135,7 +139,26 @@ def twit_format(p_nuevos: dict[str, str],
 
     fuente = 'Fuente: [Binance P2P] https://criptoya.com/'
 
-    data = '\n'.join([compra, venta, fuente])
+    if p_viejos.get('promedio_24hs'):
+        prom = float(p_nuevos['compra']) + float(p_nuevos['venta'])
+        prom /= 2
+
+        diferencia = prom / float(p_viejos['promedio_24hs']) - 1
+        diferencia *= 100
+
+        varianza = varianza_str(diferencia)
+
+        prom_24hs = f"Diferencia promedio 24hs: {varianza}"
+
+        p_nuevos['promedio_24hs'] = prom_24hs
+
+        data = '\n'.join([compra, venta, prom_24hs, fuente])
+
+    else:
+        data = '\n'.join([compra, venta, fuente])
+
+    with open('info_precios.json', 'w', encoding='utf-8') as f:
+        json.dump(p_nuevos, f, indent=2)
 
     return data
 
