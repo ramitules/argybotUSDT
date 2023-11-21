@@ -25,6 +25,7 @@ def main_func():
         data = twit_format(p_actuales)
         post(session, data)
 
+
 def connect():
     with open('keys.json', 'r', encoding='utf-8') as f:
         keys = json.load(f)
@@ -111,52 +112,54 @@ def fetch_data():
 def twit_format(p_nuevos: dict[str, str]):
     try:
         with open('info_precios.json', 'r', encoding='utf-8') as f:
-            p_viejos = json.load(f)
+            p_viejos: dict = json.load(f)
 
     except FileNotFoundError:
-        p_viejos = dict()
+        return
 
-    if p_viejos:
-        # COMPRA
-        diferencia = float(p_nuevos['compra']) / float(p_viejos['compra']) - 1
-        diferencia *= 100  # Diferencia en porcentaje
+    # COMPRA
+    diferencia = float(p_nuevos['compra']) / float(p_viejos['compra']) - 1
+    diferencia *= 100  # Diferencia en porcentaje
 
-        varianza = varianza_str(diferencia)
+    varianza = varianza_str(diferencia)
 
-        compra = f"Para la compra: ${p_nuevos['compra']} - {varianza}"
+    compra = f"Para la compra: ${p_nuevos['compra']} - {varianza}"
 
-        # VENTA
-        diferencia = float(p_nuevos['venta']) / float(p_viejos['venta']) - 1
-        diferencia *= 100
+    # VENTA
+    diferencia = float(p_nuevos['venta']) / float(p_viejos['venta']) - 1
+    diferencia *= 100
 
-        varianza = varianza_str(diferencia)
+    varianza = varianza_str(diferencia)
 
-        venta = f"Para la venta: ${p_nuevos['venta']} - {varianza}"
+    venta = f"Para la venta: ${p_nuevos['venta']} - {varianza}"
 
-    else:
-        compra = f"Para la compra: ${p_nuevos['compra']}"
-        venta = f"Para la venta: ${p_nuevos['venta']}"
-
+    # Fuente a pagina web con API
     fuente = 'Fuente: [Binance P2P] https://criptoya.com/'
 
-    if p_viejos.get('promedio_24hs'):
-        prom = float(p_nuevos['compra']) + float(p_nuevos['venta'])
-        prom /= 2
+    # Promedios cada 24hs
+    prom = float(p_nuevos['compra']) + float(p_nuevos['venta'])
+    prom /= 2
 
-        diferencia = prom / float(p_viejos['promedio_24hs']) - 1
-        diferencia *= 100
+    diferencia = prom / float(p_viejos[f'prom_{datetime.now().hour}hs']) - 1
+    diferencia *= 100
 
-        varianza = varianza_str(diferencia)
+    varianza = varianza_str(diferencia)
 
-        prom_24hs = f"Diferencia promedio 24hs: {varianza}"
+    prom_24hs = f"Diferencia 24hs: {varianza}"
 
-        p_nuevos['promedio_24hs'] = prom_24hs
+    data = '\n'.join([compra, venta, prom_24hs, fuente])
 
-        data = '\n'.join([compra, venta, prom_24hs, fuente])
+    # Eliminar precios viejos, conservar promedios
+    p_viejos.pop('compra')
+    p_viejos.pop('venta')
 
-    else:
-        data = '\n'.join([compra, venta, fuente])
+    # Actualizar diccionario de precios nuevos con los promedios viejos
+    p_nuevos.update(p_viejos)
 
+    # Reemplazar promedio de hora actual
+    p_nuevos[f'prom_{datetime.now().hour}hs'] = '{0:.2f}'.format(prom)
+
+    # Guardar nueva info
     with open('info_precios.json', 'w', encoding='utf-8') as f:
         json.dump(p_nuevos, f, indent=2)
 
