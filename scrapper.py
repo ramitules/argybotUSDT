@@ -14,16 +14,9 @@ def main_func():
     except FileNotFoundError:
         session = connect()
 
-    while True:
-        print(datetime.now().minute)
-        time.sleep(60)
-
-        if datetime.now().minute != 0:
-            continue
-
-        p_actuales = fetch_data()
-        data = twit_format(p_actuales)
-        post(session, data)
+    p_actuales = fetch_data()
+    data = twit_format(p_actuales)
+    post(session, data)
 
 
 def connect():
@@ -148,6 +141,8 @@ def twit_format(p_nuevos: dict[str, str]):
     prom_24hs = f"Diferencia 24hs: {varianza}"
 
     data = '\n'.join([compra, venta, prom_24hs, fuente])
+    print('--Se tuiteara lo siguiente--')
+    print(data)
 
     # Eliminar precios viejos, conservar promedios
     p_viejos.pop('compra')
