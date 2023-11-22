@@ -3,7 +3,6 @@ from requests_oauthlib import OAuth1Session
 import json
 import pickle
 from datetime import datetime
-import time
 
 
 def main_func():
