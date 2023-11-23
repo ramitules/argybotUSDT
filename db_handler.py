@@ -45,8 +45,7 @@ class DBHandler:
                 hora INTEGER NOT NULL,
                 compra REAL NOT NULL,
                 venta REAL NOT NULL,
-                promedio REAL NOT NULL,
-                CONSTRAINT id PRIMARY KEY(fecha, hora))'''
+                promedio REAL NOT NULL)'''
 
         with self.connection:
             self.connection.execute(query)
@@ -69,8 +68,10 @@ class DBHandler:
 
         return d_keys
 
-    def add_row(self, data):
+    def add_row(self, hora: int, compra: float, venta: float, promedio: float):
         query = 'INSERT INTO info_precios (hora, compra, venta, promedio) VALUES (?, ?, ?, ?)'
+
+        data = (hora, compra, venta, promedio)
 
         try:
             with self.connection:
@@ -78,3 +79,19 @@ class DBHandler:
 
         except sql.Error as err:
             print(f'Unexpected error: {err}')
+
+    def get_row(self, hora: int, fecha: str):
+        query = 'SELECT * FROM info_precios WHERE fecha = ? AND hora = ?'
+
+        with self.connection:
+            res = self.connection.execute(query, (fecha, hora))
+
+        res = res.fetchone()
+
+        return {
+            'fecha': res[0],
+            'hora': res[1],
+            'compra': res[2],
+            'venta': res[3],
+            'promedio': res[4]
+        }

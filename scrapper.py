@@ -2,26 +2,26 @@ import requests
 from requests_oauthlib import OAuth1Session
 import json
 import pickle
-from datetime import datetime
+from datetime import datetime, timedelta
+from db_handler import DBHandler
 
 
 def main_func():
+    db_handler = DBHandler()
+
     try:
         with open('session.pkl', 'rb') as f:
             session = pickle.load(f)
 
     except FileNotFoundError:
-        session = connect()
+        session = connect(db_handler.get_keys())
 
     p_actuales = fetch_data()
-    data = twit_format(p_actuales)
+    data = difference(p_actuales, db_handler)
     post(session, data)
 
 
-def connect():
-    with open('keys.json', 'r', encoding='utf-8') as f:
-        keys = json.load(f)
-
+def connect(keys: dict):
     consumer_key = keys['consumer_key']
     consumer_secret = keys['consumer_secret']
 
@@ -90,8 +90,8 @@ def fetch_data():
     req = requests.get('https://criptoya.com/api/binancep2p/usdt/ars')
     precios = req.json()
 
-    p_compra = "{0:.2f}".format(precios['ask'])
-    p_venta = "{0:.2f}".format(precios['bid'])
+    p_compra = precios['ask']
+    p_venta = precios['bid']
 
     datos = {
         "compra": p_compra,
@@ -101,24 +101,26 @@ def fetch_data():
     return datos
 
 
-def twit_format(p_nuevos: dict[str, str]):
-    try:
-        with open('info_precios.json', 'r', encoding='utf-8') as f:
-            p_viejos: dict = json.load(f)
+def difference(p_nuevos: dict[str, float], db_handler: DBHandler):
+    # Obtencion de datos de hace una hora
+    hoy = datetime.now() - timedelta(hours=1)
+    fecha = hoy.date().isoformat()
+    hora = hoy.hour
 
-    except FileNotFoundError:
-        return
+    p_viejos = db_handler.get_row(hora, fecha)
 
     # COMPRA
-    diferencia = float(p_nuevos['compra']) / float(p_viejos['compra']) - 1
+    compra_str = '{0:.2f}'.format(p_nuevos['compra'])
+    diferencia = (p_nuevos['compra'] / p_viejos['compra']) - 1
     diferencia *= 100  # Diferencia en porcentaje
 
     varianza = varianza_str(diferencia)
 
-    compra = f"Para la compra: ${p_nuevos['compra']} - {varianza}"
+    compra = f"Para la compra: ${compra_str} - {varianza}"
 
     # VENTA
-    diferencia = float(p_nuevos['venta']) / float(p_viejos['venta']) - 1
+    venta_str = '{0:.2f}'.format(p_nuevos['venta'])
+    diferencia = (p_nuevos['venta'] / p_viejos['venta']) - 1
     diferencia *= 100
 
     varianza = varianza_str(diferencia)
@@ -129,33 +131,29 @@ def twit_format(p_nuevos: dict[str, str]):
     fuente = 'Fuente: [Binance P2P] https://criptoya.com/'
 
     # Promedios cada 24hs
-    prom = float(p_nuevos['compra']) + float(p_nuevos['venta'])
-    prom /= 2
+    # Obtencion de datos de ayer
+    ayer = datetime.now() - timedelta(days=1)
+    fecha = ayer.date().isoformat()
+    hora = ayer.hour
 
-    diferencia = prom / float(p_viejos[f'prom_{datetime.now().hour}hs']) - 1
+    p_viejos = db_handler.get_row(hora, fecha)
+
+    prom = (p_nuevos['compra'] + p_nuevos['venta']) / 2  # Promedio
+
+    diferencia = prom / p_viejos['promedio'] - 1
     diferencia *= 100
 
     varianza = varianza_str(diferencia)
 
     prom_24hs = f"Diferencia 24hs: {varianza}"
 
+    # Unir datos y mostrarlos
     data = '\n'.join([compra, venta, prom_24hs, fuente])
     print('--Se tuiteara lo siguiente--')
-    print(data)
+    print(data, '\n-----------------------------')
 
-    # Eliminar precios viejos, conservar promedios
-    p_viejos.pop('compra')
-    p_viejos.pop('venta')
-
-    # Actualizar diccionario de precios nuevos con los promedios viejos
-    p_nuevos.update(p_viejos)
-
-    # Reemplazar promedio de hora actual
-    p_nuevos[f'prom_{datetime.now().hour}hs'] = '{0:.2f}'.format(prom)
-
-    # Guardar nueva info
-    with open('info_precios.json', 'w', encoding='utf-8') as f:
-        json.dump(p_nuevos, f, indent=2)
+    # Nueva fila a la base de datos
+    db_handler.add_row(hora, p_nuevos['compra'], p_nuevos['venta'], prom)
 
     return data
 
